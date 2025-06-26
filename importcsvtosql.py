@@ -3,6 +3,7 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Polygon
 from sqlalchemy import create_engine
+from urllib.parse import quote_plus
 
 CSV_FOLDER = r"D:\ФМИ\РАГИС\polygon_points_sofia" 
 GEOJSON_FOLDER = r"D:\ФМИ\РАГИС\Database"
@@ -16,8 +17,6 @@ DB_CONNECTION = {
 SCHEMA = "azbozhidar_work"
 
 os.makedirs(GEOJSON_FOLDER, exist_ok=True)
-
-from urllib.parse import quote_plus
 
 password = quote_plus(DB_CONNECTION['password'])
 
