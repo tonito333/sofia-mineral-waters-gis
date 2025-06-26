@@ -51,6 +51,7 @@
 
   let coverageLayer;
   let bufferLayers = [];
+  let mineralSourceLayer = null;
   let legend;
   let mineralPoints = [];
 
@@ -101,6 +102,7 @@
     if (coverageLayer) map.removeLayer(coverageLayer);
     bufferLayers.forEach(layer => map.removeLayer(layer));
     bufferLayers = [];
+    if (mineralSourceLayer) map.removeLayer(mineralSourceLayer);
     if (legend) map.removeControl(legend);
   }
 
@@ -128,15 +130,16 @@
       });
   }
 
-  fetch('minera_waterl_points.geojson')
-    .then(res => res.json())
-    .then(data => {
-      mineralPoints = data.features.map(f => ({
-        name: f.properties.rayon,
-        lat: f.geometry.coordinates[1],
-        lng: f.geometry.coordinates[0]
-      }));
-    });
+    fetch('minera_waterl_points.geojson') 
+      .then(res => res.json())
+      .then(data => {
+        mineralPoints = data.features.map(f => ({
+          name: f.properties.rayon,
+          lat: f.geometry.coordinates[1],
+          lng: f.geometry.coordinates[0]
+        }));
+      });
+
 
   function getNearestSourceName(lat, lng) {
     let minDist = Infinity;
@@ -186,6 +189,23 @@
           bufferLayers.push(layer);
         });
     });
+
+    fetch('mineral_waters.geojson')
+      .then(res => res.json())
+      .then(data => {
+        mineralSourceLayer = L.geoJSON(data, {
+          style: {
+            color: '#021c34',
+            weight: 2,
+            fillOpacity: 0.6,
+            fillColor: '#021c34'
+          },
+          onEachFeature: (feature, layer) => {
+            const name = feature.properties.rayon || "Минерален извор";
+            layer.bindPopup(`<strong>${name}</strong>`);
+          }
+        }).addTo(map);
+      });
   }
 
   showCoverage();
