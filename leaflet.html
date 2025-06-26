@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Анализ на минерални води</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map { height: 100vh; }
+    .info.legend {
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.8);
+      box-shadow: 0 0 15px rgba(0,0,0,0.2);
+      border-radius: 5px;
+      line-height: 18px;
+      color: #333;
+    }
+    .info.legend i {
+      width: 18px;
+      height: 18px;
+      float: left;
+      margin-right: 8px;
+      opacity: 0.7;
+    }
+    .controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 10px;
+      z-index: 1000;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+<div class="controls">
+  <button onclick="showCoverage()">Покритие на минерални води по адм. райони</button>
+  <button onclick="showBuffers()">Топлинна карта на минерални води</button>
+</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  const map = L.map('map').setView([42.6977, 23.3219], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  let coverageLayer;
+  let bufferLayers = [];
+  let legend;
+  let mineralPoints = [];
+
+  const distances = [100, 200, 300, 400, 500];
+
+  const bufferColors = {
+    100: '#084081',
+    200: '#0868ac',
+    300: '#2b8cbe',
+    400: '#4eb3d3',
+    500: '#7bccc4'
+  };
+
+  function getColor(p) {
+    return p > 50 ? '#084594' :
+           p > 20 ? '#2171b5' :
+           p > 10 ? '#4292c6' :
+           p > 1  ? '#6baed6' :
+           p > 0  ? '#c6dbef' :
+                    '#f7fbff';
+  }
+
+  function createLegend() {
+    if (legend) map.removeControl(legend);
+
+    legend = L.control({ position: 'bottomleft' });
+    legend.onAdd = function () {
+      const div = L.DomUtil.create('div', 'info legend');
+      const grades = [0, 1, 10, 20, 50];
+      const labels = [];
+
+      for (let i = 0; i < grades.length; i++) {
+        const from = grades[i];
+        const to = grades[i + 1];
+        labels.push(
+          '<i style="background:' + getColor(from + 0.1) + '"></i> ' +
+          from + (to ? '&ndash;' + to + '%' : '+%')
+        );
+      }
+
+      div.innerHTML = labels.join('<br>');
+      return div;
+    };
+    legend.addTo(map);
+  }
+
+  function clearLayers() {
+    if (coverageLayer) map.removeLayer(coverageLayer);
+    bufferLayers.forEach(layer => map.removeLayer(layer));
+    bufferLayers = [];
+    if (legend) map.removeControl(legend);
+  }
+
+  function showCoverage() {
+    clearLayers();
+
+    fetch('adm_rayoni_with_coverage.geojson')
+      .then(res => res.json())
+      .then(data => {
+        coverageLayer = L.geoJSON(data, {
+          style: feature => ({
+            fillColor: getColor(feature.properties.rayon_coverage_percent_percent_covered),
+            weight: 1,
+            color: 'white',
+            fillOpacity: 0.7
+          }),
+          onEachFeature: (feature, layer) => {
+            const name = feature.properties.obns_cyr || 'Няма име';
+            const percent = feature.properties.rayon_coverage_percent_percent_covered?.toFixed(2) || '0.00';
+            layer.bindPopup(`<strong>${name}</strong><br>Покритие: ${percent}%`);
+          }
+        }).addTo(map);
+
+        createLegend();
+      });
+  }
+
+  fetch('minera_waterl_points.geojson')
+    .then(res => res.json())
+    .then(data => {
+      mineralPoints = data.features.map(f => ({
+        name: f.properties.rayon,
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0]
+      }));
+    });
+
+  function getNearestSourceName(lat, lng) {
+    let minDist = Infinity;
+    let closestName = 'Няма име';
+
+    mineralPoints.forEach(point => {
+      const d = Math.sqrt(Math.pow(point.lat - lat, 2) + Math.pow(point.lng - lng, 2));
+      if (d < minDist) {
+        minDist = d;
+        closestName = point.name;
+      }
+    });
+
+    return closestName;
+  }
+
+  function showBuffers() {
+    clearLayers();
+
+    distances.forEach(distance => {
+      const filename = `mineral_water_buffer_${distance}m.geojson`;
+
+      fetch(filename)
+        .then(res => res.json())
+        .then(data => {
+          const layer = L.geoJSON(data, {
+            style: {
+              fillColor: bufferColors[distance],
+              color: bufferColors[distance],
+              weight: 0,
+              fillOpacity: 0.4
+            },
+            onEachFeature: (feature, layer) => {
+              const center = layer.getBounds().getCenter();
+              const sourceName = getNearestSourceName(center.lat, center.lng);
+
+              layer.on('mouseover', function (e) {
+                layer.bindPopup(`<strong>${sourceName}</strong>`).openPopup(e.latlng);
+              });
+
+              layer.on('mouseout', function () {
+                layer.closePopup();
+              });
+            }
+          }).addTo(map);
+
+          bufferLayers.push(layer);
+        });
+    });
+  }
+
+  showCoverage();
+</script>
+</body>
+</html>
